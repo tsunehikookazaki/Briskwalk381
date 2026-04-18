@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/menu_howto"
+        android:title="使い方"
+        android:showAsAction="never" />
+    <item
+        android:id="@+id/menu_record"
+        android:showAsAction="never"
+        android:title="早歩き詳細記録" />
+    <item
+        android:id="@+id/menu_open_image"
+        android:title="テンポ（歩数）の目安"
+        android:showAsAction="never" />
+    <item
+        android:id="@+id/menu_stop_app"
+        android:title="アプリの完全停止"
+        android:showAsAction="never" />
+
+</menu>

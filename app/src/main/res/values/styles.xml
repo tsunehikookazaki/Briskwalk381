@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- 共通ボタンスタイル -->
+    <style name="BtStyle">
+        <item name="android:layout_width">140dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="titleTextColor">#FFFFFF</item>
+    </style>
+
+</resources>

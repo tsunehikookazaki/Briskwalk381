@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- ベーステーマ -->
+    <style name="Base.Theme.Briskwalk" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- アクションバーを非表示にして、自前のToolbarを使用 -->
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+
+        <!-- アプリ全体のカラー設定（必要に応じて変更OK） -->
+        <!-- colorPrimary バーの色 ） -->
+        <item name="colorPrimary">@color/purple_500</item>
+        <!-- colorOnPrimary　文字の色 -->
+        <item name="colorOnPrimary">@android:color/white</item>
+        <!-- アプリ全体のカラー設定（必要に応じて変更OK） -->
+        <item name="colorSurface">@color/black</item>
+        <!-- アプリ全体のカラー設定（必要に応じて変更OK） -->
+        <item name="colorOnSurface">@android:color/black</item>
+
+        <!-- 状態バー（画面最上部）の色をコントロール -->
+        <item name="android:statusBarColor">@color/purple_700</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <!-- 実際にアプリで使うテーマ -->
+    <style name="Theme.Briskwalk" parent="Base.Theme.Briskwalk" />
+</resources>
