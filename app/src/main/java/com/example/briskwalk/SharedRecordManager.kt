@@ -10,8 +10,22 @@ import java.util.*
 object SharedRecordManager {
     private const val FOLDER_NAME = "LetsDoIt"
     private const val FILE_NAME = "stats.json"
+    private const val AUTHORITY = "net.the_okazakis.letsdoit.stats"
+    private val CONTENT_URI = android.net.Uri.parse("content://$AUTHORITY/stats")
 
     fun updateStats(context: Context, appKey: String, value: String) {
+        // 1. LetsDoItの窓口（ContentProvider）へ送信
+        try {
+            val values = android.content.ContentValues().apply {
+                put("app_key", appKey)
+                put("value", value)
+            }
+            context.contentResolver.insert(CONTENT_URI, values)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        // 2. 念のためこれまでのファイル保存も継続（バックアップ用）
         try {
             val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), FOLDER_NAME)
             if (!dir.exists()) dir.mkdirs()

@@ -117,6 +117,8 @@ class MainActivity : AppCompatActivity() {
         setSupportActionBar(toolbar)
         supportActionBar?.title = getString(R.string.app_name)
 
+        checkPermissions()
+
         val voltextView = findViewById<TextView>(R.id.voltext)   //ボリューム表示ようのテキストビュー
         val seekBar = findViewById<SeekBar>(R.id.seek_bar)  //シークバー
         seekBar.max = 5  // シークバーの範囲　0~5　6段階
@@ -334,6 +336,25 @@ class MainActivity : AppCompatActivity() {
                     "シャッターボタン操作：OFF",
                 Toast.LENGTH_SHORT
             ).show()
+        }
+    }
+
+    private fun checkPermissions() {
+        val permissions = mutableListOf<String>()
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            // Android 13以上では通知権限（オプション）
+            // permissions.add(android.Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            // ストレージ権限（API 32以下で必要）
+            permissions.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+            permissions.add(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+        
+        val needed = permissions.filter { 
+            androidx.core.content.ContextCompat.checkSelfPermission(this, it) != android.content.pm.PackageManager.PERMISSION_GRANTED 
+        }
+        if (needed.isNotEmpty()) {
+            androidx.core.app.ActivityCompat.requestPermissions(this, needed.toTypedArray(), 100)
         }
     }
 
@@ -641,8 +662,7 @@ class MainActivity : AppCompatActivity() {
         // 共有ファイルも更新
         SharedRecordManager.updateStats(this, "brisk", logEntry)
         
-        // Android IDを用いて回数をサーバーにアップ
-        StatusSyncManager.uploadStatus(this, "brisk", SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()), "$fastWalkCount2 回")
+        // Web同期は停止しました
     }
 
     private fun showLog() {
@@ -713,15 +733,7 @@ class MainActivity : AppCompatActivity() {
         // 共有ファイルもクリア
         SharedRecordManager.clearAppStats(this, "brisk")
         
-        // Android IDを用いてサーバー側の「今日」と「昨日」のステータスも「未実施」で上書きする
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        val todayStr = sdf.format(Date())
-        StatusSyncManager.uploadStatus(this, "brisk", todayStr, "未実施")
-        
-        val cal = java.util.Calendar.getInstance()
-        cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
-        val yesterdayStr = sdf.format(cal.time)
-        StatusSyncManager.uploadStatus(this, "brisk", yesterdayStr, "未実施")
+        // Web同期は停止しました
     }
 
     override fun onDestroy() {

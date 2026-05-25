@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Briskwalk372"
+rootProject.name = "Briskwalk380"
 include(":app")
