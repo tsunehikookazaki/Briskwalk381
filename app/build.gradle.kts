@@ -16,8 +16,8 @@ android {
         applicationId = "com.example.briskwalk"
         minSdk = 29
         targetSdk = 36
-        versionCode = 34
-        versionName = "3.80"
+        versionCode = 35
+        versionName = "3.81"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

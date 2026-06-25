@@ -53,10 +53,24 @@ object SharedRecordManager {
         }
     }
 
+
     /**
-     * 指定したアプリの統計データを共有ファイルから削除する
+     * 指定したアプリの統計データを共有ファイルから削除し、LetsDoItにも通知する
      */
     fun clearAppStats(context: Context, appKey: String) {
+
+        // ************* 1. 【追加】LetsDoItの窓口（ContentProvider）へ「未実施」を送信 *************
+        try {
+            val values = android.content.ContentValues().apply {
+                put("app_key", appKey)
+                put("value", "未実施") // LetsDoIt側で「未実施」として判定される文字列を送る
+            }
+            context.contentResolver.insert(CONTENT_URI, values)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        // ************* 2. これまでのファイル保存からも項目を削除（バックアップ用） *************
         try {
             val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), FOLDER_NAME)
             val file = File(dir, FILE_NAME)

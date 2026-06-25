@@ -27,6 +27,11 @@ import java.util.Date
 import java.util.Locale
 import android.widget.Toast
 
+// インポートの追加
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 
 // 結果を待ち受けるためのリクエストコード (任意の値)
 private const val CONGRATULATIONS_REQUEST_CODE = 100
@@ -36,14 +41,39 @@ private const val RESULT_CONTINUE = 1 // 続ける
 private const val RESULT_FINISH = 2   // 終了する
 
 
-
 class MainActivity : AppCompatActivity() {
+
+    // 💡【修正】センサー用の変数をクラスのプロパティ（内部）へ移動
+    private lateinit var sensorManager: SensorManager
+    private var stepCounterSensor: Sensor? = null
+    private var initialStepCount = -1f // アプリ起動時（またはスタート時）の累計歩数を保持
+    private var currentSessionSteps = 0 // 今回の計測中に歩いた歩数
+    private lateinit var tvLiveSteps: TextView // 歩数表示用のTextView
+
+    // 💡【修正】リスナーをクラス内部に移動し、handler.post で画面更新するように変更
+    private val stepListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent?) {
+            if (event?.sensor?.type == Sensor.TYPE_STEP_COUNTER) {
+                val totalSteps = event.values[0]
+                if (initialStepCount < 0) {
+                    initialStepCount = totalSteps
+                }
+                currentSessionSteps = (totalSteps - initialStepCount).toInt()
+
+                // メインスレッドのhandlerを使って安全にUI更新
+                handler.post {
+                    tvLiveSteps.text = "スタートからの歩数：${currentSessionSteps} 歩"
+                }
+            }
+        }
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    }
 
     private lateinit var tvMode: TextView
     private lateinit var tvCount: TextView
     private lateinit var tvTimer: TextView
-    private  lateinit var tvTempoLabel2 : TextView  // 現在のテンポラベル
-    private  lateinit var tvTempoLabel : TextView  // 現在のテンポラベル
+    private lateinit var tvTempoLabel2 : TextView  // 現在のテンポラベル
+    private lateinit var tvTempoLabel : TextView  // 現在のテンポラベル
     private lateinit var tvCurrentTempo: EditText  // テンポ入力
     private lateinit var label0: TextView
     private lateinit var btnStart: Button
@@ -59,13 +89,13 @@ class MainActivity : AppCompatActivity() {
     private var tempoBpm = 125
     private var nokorisec = 0
     private var timerlength :Long = 3 * 60 * 1000    //3分
-    //private var timerlength :Long = 15 * 1000    //15秒
+    //private var timerlength :Long = 15 * 1000    //15秒  ***********テスト用
     private var timerlength0 :Long= 0
     private var restartFlag = false
     private var pausenokori :Long = 0
 
     private lateinit var handler: Handler
-    private  lateinit var vibrator: Vibrator
+    private lateinit var vibrator: Vibrator
     private var beatTimer: CountDownTimer? = null
     private var modeTimer: CountDownTimer? = null
     private var soundPool: SoundPool? = null
@@ -81,28 +111,23 @@ class MainActivity : AppCompatActivity() {
     private var soundIdkai4 = 0
     private var rightleg = true
 
-
     private val PREF_NAME = "WalkPrefs"
     private val KEY_COUNT = "fastWalkCount"
     private val KEY_TEMPO = "tempoBpm"
     private val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault())
     private val KEY_MODE = "Fastmood"
 
-    private  var fastWalkCount2 = 0
-
+    private var fastWalkCount2 = 0
 
     // ダブルクリック判定用の変数
     private var clickCount = 0
     private val doubleClickDelayHandler = Handler(Looper.getMainLooper())
-    private val doubleClickDelay = 300L // 判定時間（ミリ秒）。お好みで300~500で調整
-
+    private val doubleClickDelay = 300L // 判定時間（ミリ秒）
 
     private var shutterEnabled = true
     private lateinit var switchShutter: com.google.android.material.switchmaterial.SwitchMaterial
 
     private var button_show = 0
-    //　　button_show = 1 スタートボタン又はリスタートボタンが押された状況　ストップボタンのみ表示
-    //　　button_show = 0 ストップボタンが押された状況、ストップボタン以外が表示
     var countVolume = 1.0f  //ボリューム初期値
 
     @SuppressLint("SetTextI18n")
@@ -110,60 +135,47 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // 💡 画面を常にオンに保つ設定を追加 💡
+        // 💡 画面を常にオンに保つ設定
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val toolbar = findViewById<Toolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
         supportActionBar?.title = getString(R.string.app_name)
 
+        // ハンドラーを一番最初に初期化（ステップリスナーで使うため）
+        handler = Handler(Looper.getMainLooper())
+
         checkPermissions()
 
-        val voltextView = findViewById<TextView>(R.id.voltext)   //ボリューム表示ようのテキストビュー
-        val seekBar = findViewById<SeekBar>(R.id.seek_bar)  //シークバー
-        seekBar.max = 5  // シークバーの範囲　0~5　6段階
+        val voltextView = findViewById<TextView>(R.id.voltext)
+        val seekBar = findViewById<SeekBar>(R.id.seek_bar)
+        seekBar.max = 5
 
-        var volume0 = "100%"  //ボリューム初期値
+        var volume0 = "100%"
         var prog0: Int
-        //ボリュームの6段階の値　0~5
-        voltextView.text = "Volume $volume0"  //ボリュームの値を表示
+        voltextView.text = "Volume $volume0"
 
-        // イベントリスナーの追加　　シークバーの値を変える
+        // 💡 センサーマネージャー等の初期化
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        tvLiveSteps = findViewById(R.id.tvLiveSteps)
+
+        // イベントリスナーの追加
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-
-            // 値が変更された時に呼ばれる
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                prog0 = progress  //変更されたらボリューム値を変える
+                prog0 = progress
                 when (prog0) {
-                    5 -> {
-                        countVolume = 1.0f;volume0 = "100%"
-                    }
-                    4 -> {
-                        countVolume = 0.8f;volume0 = "80%"
-                    }
-                    3 -> {
-                        countVolume = 0.4f;volume0 = "40%"
-                    }
-                    2 -> {
-                        countVolume = 0.2f;volume0 = "20%"
-                    }
-                    1 -> {
-                        countVolume = 0.1f;volume0 = "10%"
-                    }
-                    0 -> {
-                        countVolume = 0.05f;volume0 = "5%"
-                    }
+                    5 -> { countVolume = 1.0f; volume0 = "100%" }
+                    4 -> { countVolume = 0.8f; volume0 = "80%" }
+                    3 -> { countVolume = 0.4f; volume0 = "40%" }
+                    2 -> { countVolume = 0.2f; volume0 = "20%" }
+                    1 -> { countVolume = 0.1f; volume0 = "10%" }
+                    0 -> { countVolume = 0.05f; volume0 = "5%" }
                 }
                 voltextView.text = "Volume $volume0"
             }
-
-            // つまみがタッチされた時に呼ばれる
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {
-            }
-
-            // つまみが離された時に呼ばれる
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {
-            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
 
         // 保存されているカウントを読み込み
@@ -180,7 +192,7 @@ class MainActivity : AppCompatActivity() {
         tvTimer = findViewById(R.id.tvTimer)
         tvTempoLabel2 = findViewById(R.id.tvTempoLabel2)
         tvTempoLabel = findViewById(R.id.tvTempoLabel)
-        tvCurrentTempo = findViewById(R.id.tvCurrentTempo) // 追加 TextView
+        tvCurrentTempo = findViewById(R.id.tvCurrentTempo)
         btnStart = findViewById(R.id.btnStart)
         btnMood = findViewById(R.id.btnMood)
         btnReStart = findViewById(R.id.btnRestart)
@@ -191,27 +203,24 @@ class MainActivity : AppCompatActivity() {
 
         tvCount.text = "早歩き回数：$fastWalkCount2"
         updateNextModeLabel()
-        txtLogA.text
 
         // 保存されているカウントを読み込み
         fastWalkCount = pref.getInt(KEY_COUNT, 0)
-        tempoBpm = pref.getInt(KEY_TEMPO, 125)    //pリファレンスに規定値が無ければ、125を初期値にする
-
+        tempoBpm = pref.getInt(KEY_TEMPO, 125)
 
         // UIに反映
         tvCurrentTempo.setText(tempoBpm.toString())
         tvTempoLabel2.text = "現在のテンポ：$tempoBpm bpm"
         tvCount.text = "早歩き回数：$fastWalkCount2"
 
-
         btnStart.isEnabled = true
         btnMood.isEnabled = true
         btnStop.isEnabled = false
         btnReStart.isEnabled = false
         btnDerete.isEnabled = true
-        tvTempoLabel2.visibility = View.GONE   //現在のテンポ
-        tvCurrentTempo.visibility = View.VISIBLE  //入力欄
-        tvTempoLabel.visibility = View.VISIBLE    //テンポ（歩数/分）を入力"
+        tvTempoLabel2.visibility = View.GONE
+        tvCurrentTempo.visibility = View.VISIBLE
+        tvTempoLabel.visibility = View.VISIBLE
 
         Fastmood = true
         isFastWalk = Fastmood
@@ -225,7 +234,7 @@ class MainActivity : AppCompatActivity() {
             .setUsage(AudioAttributes.USAGE_MEDIA)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
-        soundPool = SoundPool.Builder().setMaxStreams(1).setAudioAttributes(attrs).build()
+        soundPool = SoundPool.Builder().setMaxStreams(3).setAudioAttributes(attrs).build()
         soundIdchoice = soundPool!!.load(this, R.raw.choice, 1)
         soundIdchoice2 = soundPool!!.load(this, R.raw.choice2, 1)
         soundIdfast0 = soundPool!!.load(this, R.raw.fast0, 1)
@@ -239,39 +248,28 @@ class MainActivity : AppCompatActivity() {
 
         vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
 
-        handler = Handler(Looper.getMainLooper())    //周期処理
-
-
-
-        btnMood.setOnClickListener {         //モードボタンが押されたら
+        btnMood.setOnClickListener {
             Fastmood = !Fastmood
             updateNextModeLabel()
         }
 
-
-
-        btnStart.setOnClickListener{      //スタートボタンが押されたら
+        btnStart.setOnClickListener{
             startclick()
         }
 
-        btnStop.setOnClickListener {     //ストップボタンが押されたら
+        btnStop.setOnClickListener {
             stopclick()
-
         }
 
-        btnReStart.setOnClickListener {     //リスタートボタンが押されたら
-           restartclick()
+        btnReStart.setOnClickListener {
+            restartclick()
         }
 
-
-        btnDerete.setOnClickListener {     //削除ボタンが押されたら
-            // 確認ダイアログを表示
+        btnDerete.setOnClickListener {
             androidx.appcompat.app.AlertDialog.Builder(this)
                 .setTitle("記録の削除")
                 .setMessage("全ての記録を削除しますか？\nこの操作は元に戻せません。")
                 .setPositiveButton("削除") { _, _ ->
-                    // 削除が選ばれたときの処理
-                    restartFlag = false
                     restartFlag = false
                     cleanAll()
                     showLog()
@@ -286,72 +284,41 @@ class MainActivity : AppCompatActivity() {
                     tvTempoLabel.visibility = View.VISIBLE
                     button_show = 1
                 }
-                .setNegativeButton("キャンセル", null) // 何もしないで閉じる
+                .setNegativeButton("キャンセル", null)
                 .show()
-
         }
 
-
-        // シャッターボタンの ON / OFF
         val pref2 = getSharedPreferences(PREF_NAME, MODE_PRIVATE)
-
-// シャッター有効/無効を読み込み
         shutterEnabled = pref2.getBoolean("shutterEnabled", true)
-
-// Switch取得
         switchShutter = findViewById(R.id.switchShutter)
-
-// ★① Listener を一旦外す（ここ！）
         switchShutter.setOnCheckedChangeListener(null)
-
-// ★② 初期状態を反映（ここで isChecked を触る）
         switchShutter.isChecked = shutterEnabled
-        switchShutter.text = if (shutterEnabled) {
-            "シャッターボタンON"
-        } else {
-            "シャッターボタンOFF"
-        }
+        switchShutter.text = if (shutterEnabled) "シャッターボタンON" else "シャッターボタンOFF"
 
-// ★③ Listener を設定（最後
-// 切替時
         switchShutter.setOnCheckedChangeListener { _, isChecked ->
             shutterEnabled = isChecked
-
-            // ★ ここが抜けていた
-            switchShutter.text = if (isChecked) {
-                "シャッターボタンON"
-            } else {
-                "シャッターボタンOFF"
-            }
-
-            // 保存
+            switchShutter.text = if (isChecked) "シャッターボタンON" else "シャッターボタンOFF"
             pref2.edit().putBoolean("shutterEnabled", isChecked).apply()
-
-            // Toast
-            Toast.makeText(
-                this,
-                if (isChecked)
-                    "シャッターボタン操作：ON"
-                else
-                    "シャッターボタン操作：OFF",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(this, if (isChecked) "シャッターボタン操作：ON" else "シャッターボタン操作：OFF", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun checkPermissions() {
         val permissions = mutableListOf<String>()
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            permissions.add(android.Manifest.permission.ACTIVITY_RECOGNITION)
+        }
+
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            // Android 13以上では通知権限（オプション）
-            // permissions.add(android.Manifest.permission.POST_NOTIFICATIONS)
+            // Android 13以上の処理
         } else {
-            // ストレージ権限（API 32以下で必要）
             permissions.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
             permissions.add(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
-        
-        val needed = permissions.filter { 
-            androidx.core.content.ContextCompat.checkSelfPermission(this, it) != android.content.pm.PackageManager.PERMISSION_GRANTED 
+
+        val needed = permissions.filter {
+            androidx.core.content.ContextCompat.checkSelfPermission(this, it) != android.content.pm.PackageManager.PERMISSION_GRANTED
         }
         if (needed.isNotEmpty()) {
             androidx.core.app.ActivityCompat.requestPermissions(this, needed.toTypedArray(), 100)
@@ -360,11 +327,20 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        
-        // データの整理と更新
         cleanOldLogs()
         updateTodayCount()
         showLog()
+
+        // 💡 歩数センサーの監視を開始
+        stepCounterSensor?.let {
+            sensorManager.registerListener(stepListener, it, SensorManager.SENSOR_DELAY_UI)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // 💡 バッテリー消費を防ぐためにセンサーを解除
+        sensorManager.unregisterListener(stepListener)
     }
 
     private fun updateTodayCount() {
@@ -382,20 +358,11 @@ class MainActivity : AppCompatActivity() {
         tvCount.text = "早歩き回数：$fastWalkCount2"
     }
 
-    //*********************************************************************************
-    // キーイベントの検知
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-
-        // ★ Switch が OFF のときは通常の音量キー動作
         if (!shutterEnabled) {
             return super.onKeyDown(keyCode, event)
         }
-
-
-        // 音量キーのみを対象にする
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-
-            // 長押しによる連続イベントは無視する（重要）
             if (event?.repeatCount == 0) {
                 processClick()
             }
@@ -406,34 +373,22 @@ class MainActivity : AppCompatActivity() {
 
     private fun processClick() {
         clickCount++
-
         if (clickCount == 1) {
-            // 1回目のクリック：
-            // すぐに実行せず、一定時間待ってから「シングルクリック処理」を行う予約をする
             doubleClickDelayHandler.postDelayed(singleClickRunnable, doubleClickDelay)
         } else if (clickCount == 2) {
-            // 2回目のクリック（時間内に来た場合）：
-            // 予約していた「シングルクリック処理」をキャンセルする
             doubleClickDelayHandler.removeCallbacks(singleClickRunnable)
-
-            if(button_show==0) {   //ストップボタンが押された時はスタートかリスタート
-                // 「ダブルクリック処理（スタートボタン）」を実行
-                //btnStart.performClick()
+            if(button_show==0) {
                 startclick()
                 button_show=1
                 Toast.makeText(this, "スタートボタンクリック", Toast.LENGTH_SHORT).show()
                 vibratett2()
-
             }
-            // カウントをリセット
             clickCount = 0
         }
     }
 
-    // 遅延実行されるシングルクリックのタスク
     private val singleClickRunnable = Runnable {
-        // ここまでキャンセルされずに到達したら、シングルクリック確定
-        if(button_show==0){  //ストップボタンが押された時はスタートかリスタート
+        if(button_show==0){
             restartclick()
             Toast.makeText(this, "リスタートボタンクリック", Toast.LENGTH_SHORT).show()
             vibratett2()
@@ -448,16 +403,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun vibratett2(){
         if(shutterEnabled) {
+            // ⭕ 正しいスペルに修正し、重複していた余分なコードを削除
             vibrator.vibrate(android.os.VibrationEffect.createOneShot(100, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
         }
     }
 
     private fun vibratett() {
-        // バイブレーター5秒前用（残り2秒時点で鳴動）
         val pattern = longArrayOf(0, 200, 50, 200, 50, 200, 50, 200)
         vibrator.vibrate(pattern, -1)
     }
-
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
@@ -492,7 +446,6 @@ class MainActivity : AppCompatActivity() {
         } else {
             btnMood.text = "普通歩きでスタート"
         }
-        // 停止時は常にこのテキストを表示
         tvMode.text = "ボタンを押して開始"
     }
 
@@ -505,8 +458,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun startModeTimer(duration: Long) {
         modeTimer?.cancel()
-        
-        // 開始時の音声アナウンス
         if (isFastWalk) {
             fastwalksnd()
         } else {
@@ -520,7 +471,6 @@ class MainActivity : AppCompatActivity() {
                 tvTimer.text = "経過：$elapsedSec 秒"
                 pausenokori = millisUntilFinished
 
-                // 普通歩きのときの早歩き直前（5秒前）のみ、1回だけお知らせ音を鳴らす
                 if (nokorisec == 5 && !isFastWalk) {
                     soundPool?.play(soundId5sec, countVolume, countVolume, 1, 0, 1.0f)
                 } else if (nokorisec == 2 && !isFastWalk) {
@@ -536,39 +486,33 @@ class MainActivity : AppCompatActivity() {
                     saveLog()
                     showLog()
                     vibrator.vibrate(android.os.VibrationEffect.createOneShot(1000, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
-                    
-                    // 早歩きが5回に達したら CongratulationsActivity を呼び出す
-                    if (fastWalkCount2 == 5) {
-                        val intent = Intent(this@MainActivity, CongratulationsActivity::class.java)
-                        intent.putExtra("COUNT", fastWalkCount2)
-                        startActivityForResult(intent, CONGRATULATIONS_REQUEST_CODE)
-                        
-                        // モードを切り替えて次のタイマーの準備をする
-                        isFastWalk = !isFastWalk
-                        if (isFastWalk) {
-                           tvMode.text = "現在のモード：早歩き"
-                           btnMood.text = "早歩きでスタート"
-                        } else {
-                           tvMode.text = "現在のモード：普通歩き"
-                           btnMood.text = "普通歩きでスタート"
+
+                    if (fastWalkCount2 > 0 && fastWalkCount2 % 5 == 0) {
+                        val intent = Intent(this@MainActivity, CongratulationsActivity::class.java).apply {
+                            putExtra("COUNT", fastWalkCount2)
                         }
-                        
-                        // タイマーを止めておく
+                        startActivityForResult(intent, CONGRATULATIONS_REQUEST_CODE)
+
+                        isFastWalk = false
+                        Fastmood = false
+
+                        tvMode.text = "現在のモード：普通歩き"
+                        btnMood.text = "普通歩きでスタート"
+
                         stopclick()
-                        return // 次のタイマーへは進めない
+                        return
                     }
                 } else {
                     vibrator.vibrate(android.os.VibrationEffect.createOneShot(500, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
                 }
-                
-                // モードを切り替えて次のタイマーを開始
+
                 isFastWalk = !isFastWalk
                 if (isFastWalk) {
-                   tvMode.text = "現在のモード：早歩き"
-                   btnMood.text = "早歩きでスタート" // 実行中も一応更新
+                    tvMode.text = "現在のモード：早歩き"
+                    btnMood.text = "早歩きでスタート"
                 } else {
-                   tvMode.text = "現在のモード：普通歩き"
-                   btnMood.text = "普通歩きでスタート"
+                    tvMode.text = "現在のモード：普通歩き"
+                    btnMood.text = "普通歩きでスタート"
                 }
                 startModeTimer(timerlength)
             }
@@ -577,16 +521,14 @@ class MainActivity : AppCompatActivity() {
         startBeatTimer()
     }
 
-     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == CONGRATULATIONS_REQUEST_CODE) {
             when (resultCode) {
                 RESULT_CONTINUE -> {
-                    // 「続ける」場合は次のタイマーを開始する
                     startclick()
                 }
                 RESULT_FINISH -> {
-                    // 「終了する」場合はすでに stopclick() されているので何もしないか念のため stopCycle()
                     stopCycle()
                 }
             }
@@ -595,11 +537,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun startBeatTimer() {
         beatTimer?.cancel()
-        // 普通歩きの時はビート（メトロノーム）を鳴らさない
-        if (!isFastWalk) return 
+        if (!isFastWalk) return
 
         val interval = (60000 / tempoBpm).toLong()
-        // 音声アナウンスが終わるまで少し待ってからビートを開始
         handler.postDelayed({
             beatTimer = object : CountDownTimer(timerlength + 1000, interval) {
                 override fun onTick(millisUntilFinished: Long) {
@@ -658,32 +598,26 @@ class MainActivity : AppCompatActivity() {
         val logEntry = "早歩き,${dateFormat.format(Date())}"
         logs.put(logEntry)
         prefs.edit().putString("logs", logs.toString()).apply()
-        
-        // 共有ファイルも更新
         SharedRecordManager.updateStats(this, "brisk", logEntry)
-        
-        // Web同期は停止しました
     }
 
     private fun showLog() {
         val prefs = getSharedPreferences(PREF_NAME, MODE_PRIVATE)
         val logs = JSONArray(prefs.getString("logs", "[]"))
         val countsByDate = mutableMapOf<String, Int>()
-        
-        // ログから日付ごとの回数を集計
+
         for (i in 0 until logs.length()) {
             val entry = logs.getString(i)
             try {
-                val datePart = entry.split(",")[1].substring(0, 10) // yyyy/MM/dd
+                val datePart = entry.split(",")[1].substring(0, 10)
                 countsByDate[datePart] = countsByDate.getOrDefault(datePart, 0) + 1
             } catch (e: Exception) {}
         }
-        
+
         val sb = StringBuilder()
         val sdf = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault())
         val cal = java.util.Calendar.getInstance()
-        
-        // 今日から遡って7日分のうち、実績がある日のみ表示する
+
         for (i in 0 until 7) {
             val dateStr = sdf.format(cal.time)
             val count = countsByDate.getOrDefault(dateStr, 0)
@@ -692,7 +626,6 @@ class MainActivity : AppCompatActivity() {
             }
             cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
         }
-        
         txtLogA.text = sb.toString()
     }
 
@@ -700,14 +633,13 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences(PREF_NAME, MODE_PRIVATE)
         val logs = JSONArray(prefs.getString("logs", "[]"))
         val newLogs = JSONArray()
-        
-        // 今日を含む過去7日分を保持する（厳密に日付で判定）
+
         val cal = java.util.Calendar.getInstance()
         cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
         cal.set(java.util.Calendar.MINUTE, 0)
         cal.set(java.util.Calendar.SECOND, 0)
         cal.set(java.util.Calendar.MILLISECOND, 0)
-        cal.add(java.util.Calendar.DAY_OF_YEAR, -6) // 今日を入れて7日分なので、6日前まで
+        cal.add(java.util.Calendar.DAY_OF_YEAR, -6)
         val limitTime = cal.timeInMillis
 
         for (i in 0 until logs.length()) {
@@ -729,11 +661,7 @@ class MainActivity : AppCompatActivity() {
         fastWalkCount2 = 0
         tvCount.text = "早歩き回数：0"
         txtLogA.text = ""
-        
-        // 共有ファイルもクリア
         SharedRecordManager.clearAppStats(this, "brisk")
-        
-        // Web同期は停止しました
     }
 
     override fun onDestroy() {
@@ -743,13 +671,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startclick(){
-        // 入力テンポを反映
-        tempoBpm = tvCurrentTempo.text.toString().toIntOrNull() ?:  tempoBpm
+        // 💡【修正】新しくウォーキングを開始した時に歩数を「0」にリセットする
+        initialStepCount = -1f
+        tvLiveSteps.text = "スタートからの歩数：0 歩"
+
+        tempoBpm = tvCurrentTempo.text.toString().toIntOrNull() ?: tempoBpm
         tvTempoLabel2.text = "現在のテンポ：$tempoBpm bpm"
-        
+
         isFastWalk = Fastmood
         tvMode.text = if (isFastWalk) "現在のモード：早歩き" else "現在のモード：普通歩き"
-        
+
         restartFlag = false
         startCycle()
 
@@ -758,11 +689,12 @@ class MainActivity : AppCompatActivity() {
         btnStop.isEnabled = true
         btnReStart.isEnabled = false
         btnDerete.isEnabled = false
-        tvTempoLabel2.visibility = View.VISIBLE //現在のテンポ
-        tvCurrentTempo.visibility = View.INVISIBLE  //入力欄
-        tvTempoLabel.visibility = View.GONE   //テンポ（歩数/分）を入力"
+        tvTempoLabel2.visibility = View.VISIBLE
+        tvCurrentTempo.visibility = View.INVISIBLE
+        tvTempoLabel.visibility = View.GONE
         button_show = 1
     }
+
     private fun stopclick(){
         restartFlag = false
         stopCycle()
@@ -772,11 +704,12 @@ class MainActivity : AppCompatActivity() {
         btnStop.isEnabled = false
         btnReStart.isEnabled = true
         btnDerete.isEnabled = true
-        tvTempoLabel2.visibility = View.GONE   //現在のテンポ
-        tvCurrentTempo.visibility = View.VISIBLE  //入力欄
-        tvTempoLabel.visibility = View.VISIBLE    //テンポ（歩数/分）を入力"
+        tvTempoLabel2.visibility = View.GONE
+        tvCurrentTempo.visibility = View.VISIBLE
+        tvTempoLabel.visibility = View.VISIBLE
         button_show = 0
     }
+
     private fun restartclick(){
         restartFlag = true
         tvMode.text = if (isFastWalk) "現在のモード：早歩き" else "現在のモード：普通歩き"
@@ -787,9 +720,9 @@ class MainActivity : AppCompatActivity() {
         btnStop.isEnabled = true
         btnReStart.isEnabled = false
         btnDerete.isEnabled = false
-        tvTempoLabel2.visibility = View.VISIBLE //現在のテンポ
-        tvCurrentTempo.visibility = View.INVISIBLE  //入力欄
-        tvTempoLabel.visibility = View.GONE   //テンポ（歩数/分）を入力"
+        tvTempoLabel2.visibility = View.VISIBLE
+        tvCurrentTempo.visibility = View.INVISIBLE
+        tvTempoLabel.visibility = View.GONE
         button_show = 1
     }
 }

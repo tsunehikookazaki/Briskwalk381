@@ -30,7 +30,7 @@ class CongratulationsActivity : AppCompatActivity() {
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         // MainActivityから回数を取得
-        val count = intent.getIntExtra("FAST_WALK_COUNT", 5)
+        val count = intent.getIntExtra("COUNT", 5)
 
         // UI要素の取得
         val tvCongratulations = findViewById<TextView>(R.id.tvCongratulations)

@@ -100,6 +100,17 @@
                 app:layout_constraintTop_toBottomOf="@+id/tvTimer" />
 
             <TextView
+                android:id="@+id/tvLiveSteps"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="スタートからの歩数：0 歩"
+                android:textSize="24sp"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/tvCount" />
+
+            <TextView
                 android:id="@+id/tvTempoLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -108,7 +119,7 @@
                 android:textSize="16sp"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/tvCount" />
+                app:layout_constraintTop_toBottomOf="@+id/tvLiveSteps" />
 
             <TextView
                 android:id="@+id/tvTempoLabel2"
@@ -119,8 +130,7 @@
                 android:textSize="16sp"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/tvCount" />
-
+                app:layout_constraintTop_toBottomOf="@+id/tvLiveSteps" />
             <EditText
                 android:id="@+id/tvCurrentTempo"
                 android:layout_width="60dp"
